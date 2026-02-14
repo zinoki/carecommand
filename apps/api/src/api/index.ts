@@ -1,0 +1,36 @@
+import { Router } from 'express';
+import { authRouter } from './auth.js';
+import { healthRouter } from './health.js';
+import { invitesRouter } from './invites.js';
+import { invitePublicRouter } from './invitePublic.js';
+import { inviteAcceptRouter } from './inviteAccept.js';
+import { personsRouter } from './persons.js';
+import { peopleRouter } from './people.js';
+import { tasksRouter } from './tasks.js';
+import { complianceRouter } from './compliance.js';
+import { templatesRouter } from './templates.js';
+import { personRequirementsRouter } from './personRequirements.js';
+import { documentsRouter } from './documents.js';
+import { recruitingRouter } from './recruiting.js';
+import { integrationsRouter } from './integrations.js';
+import { importRouter } from './import.js';
+import { billingRouter } from './billing.js';
+
+export const apiRouter = Router();
+
+apiRouter.use('/auth', authRouter);
+apiRouter.use('/health', healthRouter);
+apiRouter.use('/invite', invitePublicRouter);
+apiRouter.use('/invites/accept', inviteAcceptRouter);
+apiRouter.use('/invites', invitesRouter);
+apiRouter.use('/persons', personsRouter);
+apiRouter.use('/people', peopleRouter);
+apiRouter.use('/tasks', tasksRouter);
+apiRouter.use('/compliance', complianceRouter);
+apiRouter.use('/templates', templatesRouter);
+apiRouter.use('/person-requirements', personRequirementsRouter);
+apiRouter.use('/documents', documentsRouter);
+apiRouter.use('/recruiting', recruitingRouter);
+apiRouter.use('/integrations', integrationsRouter);
+apiRouter.use('/import', importRouter);
+apiRouter.use('/billing', billingRouter);

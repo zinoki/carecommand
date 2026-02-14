@@ -1,0 +1,396 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============ Core Multi-Tenant ============
+
+model Tenant {
+  id        String   @id @default(uuid())
+  name      String
+  settings  Json     @default("{}")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users              User[]
+  invites            Invite[]
+  tenantBilling      TenantBilling?
+  persons            Person[]
+  requirementTemplates RequirementTemplate[]
+  requirementTemplateItems RequirementTemplateItem[]
+  axisCareConnection AxisCareConnection?
+  auditLogs          AuditLog[]
+  messageLogs        MessageLog[]
+  employmentEpisodes EmploymentEpisode[]
+  noShowEvents       NoShowEvent[]
+  personRequirements PersonRequirement[]
+  requirementEvidence RequirementEvidence[]
+  axisCareMappings   AxisCareMapping[]
+
+  @@index([id])
+}
+
+model User {
+  id                   String    @id @default(uuid())
+  tenantId             String
+  email                String
+  passwordHash         String
+  role                 String    // ADMIN, STAFF
+  firstName            String
+  lastName             String
+  phone                String?
+  profilePhotoUrl      String?
+  isActive             Boolean   @default(true)
+  failedLoginAttempts  Int       @default(0)
+  lockedUntil          DateTime?
+  lastLoginAt          DateTime?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  tenant              Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  invites             Invite[]  @relation("InvitedBy")
+  auditLogs           AuditLog[]
+  ownedEpisodes       EmploymentEpisode[] @relation("EpisodeOwner")
+  personRequirements  PersonRequirement[] @relation("Verifier")
+  requirementEvidence RequirementEvidence[]
+  createdNoShowEvents NoShowEvent[]
+
+  @@unique([tenantId, email])
+  @@index([tenantId])
+  @@index([email])
+}
+
+model Plan {
+  id                  String   @id @default(uuid())
+  name                String
+  priceMonthly        Decimal  @db.Decimal(10, 2) @default(0)
+  stripePriceId       String?
+  maxUsers            Int?
+  maxActiveCaregivers Int?
+  featuresJson        Json     @default("{}")
+  isFree              Boolean  @default(false)
+  isActive            Boolean  @default(true)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  tenantBillings TenantBilling[]
+
+  @@index([isActive])
+}
+
+model TenantBilling {
+  id                    String    @id @default(uuid())
+  tenantId              String    @unique
+  planId                String
+  stripeCustomerId      String?
+  stripeSubscriptionId  String?
+  status                String    // FREE, ACTIVE, PAST_DUE, CANCELED
+  currentPeriodEnd      DateTime?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  plan   Plan   @relation(fields: [planId], references: [id])
+
+  @@index([tenantId])
+}
+
+model Invite {
+  id        String   @id @default(uuid())
+  email     String
+  tenantId  String
+  role      String   // ADMIN, STAFF
+  token     String   @unique
+  expiresAt DateTime
+  invitedBy String?
+
+  tenant  Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  inviter User?  @relation("InvitedBy", fields: [invitedBy], references: [id])
+
+  @@index([token])
+  @@index([tenantId])
+}
+
+// ============ Person & Episodes ============
+
+model Person {
+  id                     String    @id @default(uuid())
+  tenantId               String
+  firstName              String
+  lastName               String
+  email                  String?
+  phone                  String?
+  birthday               DateTime?
+  gender                 String?
+  city                   String?
+  hca                    String?
+  normalizedEmail        String?
+  normalizedPhone        String?
+  isDriver               Boolean   @default(false)
+  eligibilityStatus      String    // ELIGIBLE, HOLD, INELIGIBLE
+  eligibilityReasonCategory String?
+  eligibilityReasonNotes  String?   @db.Text
+  eligibilitySetByUserId  String?
+  eligibilitySetAt       DateTime?
+  axiscareCaregiverId    String?
+  driveFolderId          String?
+  driveFolderUrl         String?
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+
+  tenant           Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  episodes         EmploymentEpisode[]
+  noShowEvents     NoShowEvent[]
+  axisCareMapping  AxisCareMapping?
+
+  @@index([tenantId])
+  @@index([tenantId, eligibilityStatus])
+}
+
+model EmploymentEpisode {
+  id                         String    @id @default(uuid())
+  tenantId                   String
+  personId                   String
+  episodeNumber              Int
+  lifecycleStatus            String    // CANDIDATE, ONBOARDING, ACTIVE, OFFBOARDED
+  recruitmentStage           String?
+  onboardingStage            String?
+  passDate                   DateTime?
+  startDate                  DateTime?
+  offboardDate               DateTime?
+  offboardType               String?   // VOLUNTARY_QUIT, TERMINATED, INACTIVE, OTHER
+  offboardReasonCategory     String?
+  offboardNotes              String?   @db.Text
+  ownerUserId                String?
+  expectedAvailabilityStart  DateTime?
+  resumeS3Key                String?
+  referrerName               String?
+  referrerRelationship       String?
+  referrerEmail              String?
+  referenceNotes             String?   @db.Text
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  tenant       Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  person       Person            @relation(fields: [personId], references: [id], onDelete: Cascade)
+  owner        User?             @relation("EpisodeOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
+  personRequirements PersonRequirement[]
+
+  @@unique([personId, episodeNumber])
+  @@index([tenantId])
+  @@index([personId])
+  @@index([lifecycleStatus])
+}
+
+model NoShowEvent {
+  id         String   @id @default(uuid())
+  tenantId   String
+  personId   String
+  occurredAt DateTime
+  notes      String?  @db.Text
+  createdBy  String
+
+  tenant  Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  person  Person @relation(fields: [personId], references: [id], onDelete: Cascade)
+  creator User   @relation(fields: [createdBy], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([personId])
+}
+
+// ============ Requirements ============
+
+model RequirementTemplate {
+  id        String   @id @default(uuid())
+  tenantId  String
+  name      String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  items  RequirementTemplateItem[]
+
+  @@index([tenantId])
+}
+
+model RequirementTemplateItem {
+  id           String   @id @default(uuid())
+  tenantId     String
+  templateId   String
+  name         String
+  docType      String   // ID_DOCUMENT, TB_TEST, HCA_REGISTRATION, etc.
+  expires      Boolean  @default(false)
+  requiredRule String   // ALWAYS, IF_DRIVER
+  evidenceType String   // PDF, LINK, UPLOAD_OR_LINK
+  appliesTo    String   // ONBOARDING, COMPLIANCE, BOTH
+  orderIndex   Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  tenant           Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  template         RequirementTemplate   @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  personRequirements PersonRequirement[]
+
+  @@index([tenantId])
+  @@index([templateId])
+}
+
+model PersonRequirement {
+  id                  String    @id @default(uuid())
+  tenantId            String
+  employmentEpisodeId String
+  templateItemId      String
+  status              String    // MISSING, SUBMITTED, VERIFIED, NOT_NEEDED
+  expiresOn           DateTime?
+  dueAt               DateTime?
+  verifierUserId      String?
+  verifiedAt          DateTime?
+  notes               String?   @db.Text
+  createdAt           DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  tenant       Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  episode      EmploymentEpisode   @relation(fields: [employmentEpisodeId], references: [id], onDelete: Cascade)
+  templateItem RequirementTemplateItem @relation(fields: [templateItemId], references: [id], onDelete: Cascade)
+  verifier     User?                @relation("Verifier", fields: [verifierUserId], references: [id], onDelete: SetNull)
+  evidence     RequirementEvidence[]
+
+  @@unique([employmentEpisodeId, templateItemId])
+  @@index([tenantId])
+  @@index([employmentEpisodeId])
+}
+
+model RequirementEvidence {
+  id                  String   @id @default(uuid())
+  tenantId            String
+  personRequirementId String
+  storageType         String   // UPLOAD, DRIVE_LINK
+  s3Key               String?
+  fileName            String?
+  mimeType            String?
+  sizeBytes           Int?
+  driveFileId         String?
+  driveUrl            String?
+  createdByUserId     String
+  createdAt           DateTime @default(now())
+
+  tenant       Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  personRequirement PersonRequirement @relation(fields: [personRequirementId], references: [id], onDelete: Cascade)
+  createdBy    User             @relation(fields: [createdByUserId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([personRequirementId])
+}
+
+// ============ AxisCare ============
+
+model AxisCareConnection {
+  id                    String    @id @default(uuid())
+  tenantId              String    @unique
+  siteNumber            String
+  apiTokenEncrypted     String
+  enabled               Boolean   @default(false)
+  syncMode              String    @default("READ_ONLY") // READ_ONLY, DRY_RUN, SAFE_WRITE, FULL_WRITE
+  syncFrequencyMinutes  Int       @default(60)
+  lastSyncAt            DateTime?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  tenant   Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+}
+
+model AxisCareMapping {
+  id                    String   @id @default(uuid())
+  tenantId              String
+  personId              String   @unique
+  axiscareCaregiverId   String
+  externalIdVerified    Boolean  @default(false)
+  writeEnabled          Boolean  @default(false)
+  matchConfidence       Int      @default(0)
+  lastSyncedAt          DateTime
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  person Person @relation(fields: [personId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([personId])
+}
+
+model AxisCareSyncLog {
+  id                    String   @id @default(uuid())
+  tenantId              String
+  personId              String?
+  axiscareCaregiverId   String?
+  operation             String   // CREATE, UPDATE, ACTIVATE, DEACTIVATE, LINK_EXTERNAL_ID
+  executed              Boolean
+  syncMode              String
+  oldValue              Json     @default("{}")
+  newValue              Json     @default("{}")
+  statusCode            Int?
+  errorText             String?  @db.Text
+  createdAt             DateTime @default(now())
+
+  @@index([tenantId])
+  @@index([personId])
+  @@index([createdAt])
+}
+
+model AxisCareWriteLimiter {
+  id         String   @id @default(uuid())
+  tenantId   String
+  hourBucket String
+  writeCount Int      @default(0)
+  updatedAt  DateTime @updatedAt
+
+  @@unique([tenantId, hourBucket])
+  @@index([tenantId])
+}
+
+// ============ Messaging ============
+
+model MessageLog {
+  id                 String   @id @default(uuid())
+  tenantId           String
+  personId           String
+  toNumber           String
+  body               String   @db.Text
+  status             String
+  sentAt             DateTime @default(now())
+  providerMessageId  String?
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([personId])
+}
+
+// ============ Audit ============
+
+model AuditLog {
+  id           String   @id @default(uuid())
+  tenantId     String
+  actorUserId  String?
+  action       String
+  entityType   String
+  entityId     String?
+  metadataJson Json     @default("{}")
+  ipAddress    String?
+  userAgent    String?
+  createdAt    DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  actor  User?  @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId])
+  @@index([tenantId, entityType, entityId])
+  @@index([createdAt])
+}

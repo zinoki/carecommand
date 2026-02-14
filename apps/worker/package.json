@@ -1,0 +1,26 @@
+{
+  "name": "carecommand-worker",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "db:generate": "prisma generate --schema=../api/prisma/schema.prisma"
+  },
+  "prisma": {
+    "schema": "../api/prisma/schema.prisma"
+  },
+  "dependencies": {
+    "@carecommand/shared": "*",
+    "@prisma/client": "^5.22.0",
+    "bullmq": "^5.34.0",
+    "ioredis": "^5.4.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.9.0",
+    "prisma": "^5.22.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.3"
+  }
+}

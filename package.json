@@ -1,0 +1,21 @@
+{
+  "name": "carecommand",
+  "private": true,
+  "workspaces": ["packages/*", "apps/*"],
+  "scripts": {
+    "dev": "concurrently \"npm run dev:api\" \"npm run dev:web\"",
+    "dev:api": "npm run dev --workspace=carecommand-api",
+    "dev:web": "npm run dev --workspace=carecommand-web",
+    "dev:worker": "npm run dev --workspace=carecommand-worker",
+    "build": "npm run build --workspace=@carecommand/shared && npm run build --workspace=carecommand-api && npm run build --workspace=carecommand-web",
+    "db:generate": "npm run db:generate --workspace=carecommand-api",
+    "db:migrate": "npm run db:migrate --workspace=carecommand-api",
+    "db:seed": "npm run db:seed --workspace=carecommand-api",
+    "db:studio": "npm run db:studio --workspace=carecommand-api",
+    "docker:up": "docker compose up -d",
+    "docker:down": "docker compose down"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}
