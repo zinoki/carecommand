@@ -12,6 +12,7 @@ import { Clients } from './pages/Clients';
 import { ClientProfile } from './pages/ClientProfile';
 import { Leads } from './pages/Leads';
 import { LeadProfile } from './pages/LeadProfile';
+import { AddLead } from './pages/AddLead';
 import { Applicants } from './pages/Applicants';
 import { ApplicantProfile } from './pages/ApplicantProfile';
 import { Recruiting } from './pages/Recruiting';
@@ -57,6 +58,7 @@ export default function App() {
         <Route path="clients" element={<Clients />} />
         <Route path="clients/:id" element={<ClientProfile />} />
         <Route path="leads" element={<Leads />} />
+        <Route path="leads/new" element={<AddLead />} />
         <Route path="leads/:id" element={<LeadProfile />} />
         <Route path="applicants" element={<Applicants />} />
         <Route path="applicants/:id" element={<ApplicantProfile />} />

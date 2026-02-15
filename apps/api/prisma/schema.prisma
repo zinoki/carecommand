@@ -19,7 +19,7 @@ model Tenant {
   users              User[]
   invites            Invite[]
   tenantBilling      TenantBilling?
-  persons            Person[]
+  caregivers         Caregiver[]
   requirementTemplates RequirementTemplate[]
   requirementTemplateItems RequirementTemplateItem[]
   axisCareConnection AxisCareConnection?
@@ -31,8 +31,6 @@ model Tenant {
   requirementEvidence RequirementEvidence[]
   axisCareMappings   AxisCareMapping[]
   clients            Client[]
-  leads              Lead[]
-  applicants         Applicant[]
   schedules          Schedule[]
   visits             Visit[]
 
@@ -60,6 +58,7 @@ model User {
   invites             Invite[]  @relation("InvitedBy")
   auditLogs           AuditLog[]
   ownedEpisodes       EmploymentEpisode[] @relation("EpisodeOwner")
+  ownedClients        Client[]  @relation("ClientOwner")
   personRequirements  PersonRequirement[] @relation("Verifier")
   requirementEvidence RequirementEvidence[]
   createdNoShowEvents NoShowEvent[]
@@ -120,9 +119,9 @@ model Invite {
   @@index([tenantId])
 }
 
-// ============ Person & Episodes ============
+// ============ Caregiver & Episodes ============
 
-model Person {
+model Caregiver {
   id                     String    @id @default(uuid())
   tenantId               String
   firstName              String
@@ -141,7 +140,10 @@ model Person {
   eligibilityReasonNotes  String?   @db.Text
   eligibilitySetByUserId  String?
   eligibilitySetAt       DateTime?
-  axiscareCaregiverId    String?
+  axisCareId             String?
+  axisCareLifecycleStage String?   // applicant, caregiver
+  axisCareRawData        Json?
+  axisCareLastSyncedAt   DateTime?
   driveFolderId          String?
   driveFolderUrl         String?
   createdAt              DateTime  @default(now())
@@ -151,9 +153,11 @@ model Person {
   episodes         EmploymentEpisode[]
   noShowEvents     NoShowEvent[]
   axisCareMapping  AxisCareMapping?
-  schedules       Schedule[]
+  schedules        Schedule[]
   visits           Visit[]
+  messageLogs      MessageLog[]
 
+  @@unique([tenantId, axisCareId])
   @@index([tenantId])
   @@index([tenantId, eligibilityStatus])
 }
@@ -161,11 +165,10 @@ model Person {
 model EmploymentEpisode {
   id                         String    @id @default(uuid())
   tenantId                   String
-  personId                   String
+  caregiverId                String
   episodeNumber              Int
   lifecycleStatus            String    // CANDIDATE, ONBOARDING, ACTIVE, OFFBOARDED
-  recruitmentStage           String?
-  onboardingStage            String?
+  caregiverPipelineStage     String?   // Interview, ManagerReview, Onboarding, Ready, OnHold, Offboarding, Offboarded
   passDate                   DateTime?
   startDate                  DateTime?
   offboardDate               DateTime?
@@ -183,30 +186,30 @@ model EmploymentEpisode {
   updatedAt             DateTime  @updatedAt
 
   tenant       Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  person       Person            @relation(fields: [personId], references: [id], onDelete: Cascade)
+  caregiver    Caregiver         @relation(fields: [caregiverId], references: [id], onDelete: Cascade)
   owner        User?             @relation("EpisodeOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
   personRequirements PersonRequirement[]
 
-  @@unique([personId, episodeNumber])
+  @@unique([caregiverId, episodeNumber])
   @@index([tenantId])
-  @@index([personId])
+  @@index([caregiverId])
   @@index([lifecycleStatus])
 }
 
 model NoShowEvent {
-  id         String   @id @default(uuid())
-  tenantId   String
-  personId   String
-  occurredAt DateTime
-  notes      String?  @db.Text
-  createdBy  String
+  id          String   @id @default(uuid())
+  tenantId    String
+  caregiverId String
+  occurredAt  DateTime
+  notes       String?  @db.Text
+  createdBy   String
 
-  tenant  Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  person  Person @relation(fields: [personId], references: [id], onDelete: Cascade)
-  creator User   @relation(fields: [createdBy], references: [id], onDelete: Cascade)
+  tenant    Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  caregiver Caregiver @relation(fields: [caregiverId], references: [id], onDelete: Cascade)
+  creator   User      @relation(fields: [createdBy], references: [id], onDelete: Cascade)
 
   @@index([tenantId])
-  @@index([personId])
+  @@index([caregiverId])
 }
 
 // ============ Requirements ============
@@ -313,7 +316,7 @@ model AxisCareConnection {
 model AxisCareMapping {
   id                    String   @id @default(uuid())
   tenantId              String
-  personId              String   @unique
+  caregiverId            String   @unique
   axiscareCaregiverId   String
   externalIdVerified    Boolean  @default(false)
   writeEnabled          Boolean  @default(false)
@@ -323,17 +326,17 @@ model AxisCareMapping {
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
 
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  person Person @relation(fields: [personId], references: [id], onDelete: Cascade)
+  tenant    Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  caregiver Caregiver @relation(fields: [caregiverId], references: [id], onDelete: Cascade)
 
   @@index([tenantId])
-  @@index([personId])
+  @@index([caregiverId])
 }
 
 model AxisCareSyncLog {
   id                    String   @id @default(uuid())
   tenantId              String
-  personId              String?
+  caregiverId           String?
   axiscareCaregiverId   String?
   operation             String   // CREATE, UPDATE, ACTIVATE, DEACTIVATE, LINK_EXTERNAL_ID
   executed              Boolean
@@ -345,7 +348,7 @@ model AxisCareSyncLog {
   createdAt             DateTime @default(now())
 
   @@index([tenantId])
-  @@index([personId])
+  @@index([caregiverId])
   @@index([createdAt])
 }
 
@@ -362,73 +365,39 @@ model AxisCareWriteLimiter {
 
 // ============ AxisCare Synced Entities ============
 
-model Applicant {
-  id                 String   @id @default(uuid())
-  tenantId           String
-  axiscareApplicantId String
-  firstName          String
-  lastName           String
-  email              String?
-  phone              String?
-  rawData            Json     @default("{}")
-  lastSyncedAt       DateTime @default(now())
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
-
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-
-  @@unique([tenantId, axiscareApplicantId])
-  @@index([tenantId])
-}
-
 model Client {
-  id               String    @id @default(uuid())
-  tenantId         String
-  axiscareClientId String
-  firstName        String
-  lastName         String
-  email            String?
-  phone            String?
-  address          String?
-  status           String
-  rawData          Json      @default("{}")
-  lastSyncedAt     DateTime  @default(now())
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
+  id                    String    @id @default(uuid())
+  tenantId              String
+  axisCareId            String?
+  axisCareLifecycleStage String?  // lead, client
+  firstName             String
+  lastName              String
+  email                 String?
+  phone                 String?
+  address               String?
+  status                String?
+  clientPipelineStage   String?   // Lead, Assessment, Matching, Matched, OnHold, Offboarding, Offboarded
+  ownerUserId           String?
+  rawData               Json      @default("{}")
+  axisCareLastSyncedAt  DateTime?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
 
   tenant   Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  owner    User?      @relation("ClientOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
   schedules Schedule[]
   visits   Visit[]
 
-  @@unique([tenantId, axiscareClientId])
+  @@unique([tenantId, axisCareId])
   @@index([tenantId])
   @@index([status])
-}
-
-model Lead {
-  id              String   @id @default(uuid())
-  tenantId        String
-  axiscareLeadId  String
-  firstName       String
-  lastName        String
-  email           String?
-  phone           String?
-  rawData         Json     @default("{}")
-  lastSyncedAt    DateTime @default(now())
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-
-  @@unique([tenantId, axiscareLeadId])
-  @@index([tenantId])
 }
 
 model Schedule {
   id                 String   @id @default(uuid())
   tenantId           String
   clientId           String?
-  personId           String?
+  caregiverId        String?
   axiscareScheduleId String?  @unique
   startAt            DateTime
   endAt              DateTime?
@@ -437,14 +406,14 @@ model Schedule {
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
 
-  tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  client   Client?   @relation(fields: [clientId], references: [id], onDelete: SetNull)
-  person   Person?   @relation(fields: [personId], references: [id], onDelete: SetNull)
-  visits   Visit[]
+  tenant    Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  client    Client?   @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  caregiver Caregiver? @relation(fields: [caregiverId], references: [id], onDelete: SetNull)
+  visits    Visit[]
 
   @@index([tenantId])
   @@index([clientId])
-  @@index([personId])
+  @@index([caregiverId])
 }
 
 model Visit {
@@ -452,7 +421,7 @@ model Visit {
   tenantId         String
   scheduleId       String?
   clientId         String?
-  personId         String?
+  caregiverId      String?
   axiscareVisitId  String?   @unique
   status           String?
   startAt          DateTime?
@@ -462,15 +431,15 @@ model Visit {
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 
-  tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  schedule Schedule? @relation(fields: [scheduleId], references: [id], onDelete: SetNull)
-  client   Client?   @relation(fields: [clientId], references: [id], onDelete: SetNull)
-  person   Person?   @relation(fields: [personId], references: [id], onDelete: SetNull)
+  tenant    Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  schedule  Schedule? @relation(fields: [scheduleId], references: [id], onDelete: SetNull)
+  client    Client?   @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  caregiver Caregiver? @relation(fields: [caregiverId], references: [id], onDelete: SetNull)
 
   @@index([tenantId])
   @@index([scheduleId])
   @@index([clientId])
-  @@index([personId])
+  @@index([caregiverId])
 }
 
 // ============ Messaging ============
@@ -478,17 +447,18 @@ model Visit {
 model MessageLog {
   id                 String   @id @default(uuid())
   tenantId           String
-  personId           String
+  caregiverId        String
   toNumber           String
   body               String   @db.Text
   status             String
   sentAt             DateTime @default(now())
   providerMessageId  String?
 
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant    Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  caregiver Caregiver @relation(fields: [caregiverId], references: [id], onDelete: Cascade)
 
   @@index([tenantId])
-  @@index([personId])
+  @@index([caregiverId])
 }
 
 // ============ Audit ============

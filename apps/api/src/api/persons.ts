@@ -22,7 +22,7 @@ personsRouter.get('/', async (req, res, next) => {
     const include: any = { episodes: { orderBy: { episodeNumber: 'desc' }, take: 1 } };
 
     if (type === 'Candidate') {
-      const persons = await prisma.person.findMany({
+      const caregivers = await prisma.caregiver.findMany({
         where: {
           tenantId,
           episodes: {
@@ -36,7 +36,7 @@ personsRouter.get('/', async (req, res, next) => {
         orderBy: { updatedAt: 'desc' },
       });
       return res.json(
-        persons.map((p) => ({
+        caregivers.map((p) => ({
           id: p.id,
           firstName: p.firstName,
           lastName: p.lastName,
@@ -45,15 +45,23 @@ personsRouter.get('/', async (req, res, next) => {
           tenantId: p.tenantId,
           eligibilityStatus: p.eligibilityStatus,
           personRecruiting: {
-            stage: (p.episodes[0] as any)?.recruitmentStage || 'Intake',
+            stage: (p.episodes[0] as any)?.caregiverPipelineStage || 'Interview',
           },
         }))
       );
     }
 
+    if (type === 'Applicant') {
+      const caregivers = await prisma.caregiver.findMany({
+        where: { tenantId, axisCareLifecycleStage: 'applicant' },
+        orderBy: { updatedAt: 'desc' },
+      });
+      return res.json(caregivers);
+    }
+
     if (type === 'Caregiver') {
       const statuses = status ? (status as string).split(',') : ['ACTIVE'];
-      const persons = await prisma.person.findMany({
+      const caregivers = await prisma.caregiver.findMany({
         where: {
           tenantId,
           episodes: {
@@ -64,7 +72,7 @@ personsRouter.get('/', async (req, res, next) => {
         orderBy: { updatedAt: 'desc' },
       });
       return res.json(
-        persons.map((p) => ({
+        caregivers.map((p) => ({
           id: p.id,
           firstName: p.firstName,
           lastName: p.lastName,
@@ -75,12 +83,12 @@ personsRouter.get('/', async (req, res, next) => {
       );
     }
 
-    const persons = await prisma.person.findMany({
+    const caregivers = await prisma.caregiver.findMany({
       where,
       include,
       orderBy: { updatedAt: 'desc' },
     });
-    res.json(persons);
+    res.json(caregivers);
   } catch (err) {
     next(err);
   }
@@ -90,18 +98,18 @@ personsRouter.get('/:id', async (req, res, next) => {
   try {
     const { tenantId } = req.auth!;
     const { id } = req.params;
-    const person = await prisma.person.findFirst({
+    const caregiver = await prisma.caregiver.findFirst({
       where: { id, tenantId },
       include: {
         episodes: { orderBy: { episodeNumber: 'desc' } },
         axisCareMapping: true,
       },
     });
-    if (!person) return res.status(404).json({ error: 'Not found' });
+    if (!caregiver) return res.status(404).json({ error: 'Not found' });
     res.json({
-      ...person,
-      personRecruiting: person.episodes[0]
-        ? { stage: person.episodes[0].recruitmentStage, interviewNotes: null }
+      ...caregiver,
+      personRecruiting: caregiver.episodes[0]
+        ? { stage: caregiver.episodes[0].caregiverPipelineStage, interviewNotes: null }
         : null,
     });
   } catch (err) {
@@ -150,8 +158,8 @@ personsRouter.post('/', upload.single('resume'), async (req, res, next) => {
       });
     }
 
-    const person = await prisma.$transaction(async (tx) => {
-      const p = await tx.person.create({
+    const caregiver = await prisma.$transaction(async (tx) => {
+      const p = await tx.caregiver.create({
         data: {
           tenantId,
           firstName: firstName || 'Unknown',
@@ -171,10 +179,10 @@ personsRouter.post('/', upload.single('resume'), async (req, res, next) => {
       await tx.employmentEpisode.create({
         data: {
           tenantId,
-          personId: p.id,
+          caregiverId: p.id,
           episodeNumber: 1,
           lifecycleStatus: type === 'Candidate' ? 'CANDIDATE' : 'ONBOARDING',
-          recruitmentStage: type === 'Candidate' ? 'Intake' : null,
+          caregiverPipelineStage: type === 'Candidate' ? 'Interview' : null,
           expectedAvailabilityStart,
           resumeS3Key,
           referrerName,
@@ -186,13 +194,13 @@ personsRouter.post('/', upload.single('resume'), async (req, res, next) => {
       return p;
     });
 
-    const full = await prisma.person.findUnique({
-      where: { id: person.id },
+    const full = await prisma.caregiver.findUnique({
+      where: { id: caregiver.id },
       include: { episodes: true },
     });
     res.status(201).json({
       ...full,
-      personRecruiting: { stage: 'Intake' },
+      personRecruiting: { stage: 'Interview' },
     });
   } catch (err) {
     next(err);

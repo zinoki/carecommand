@@ -15,21 +15,21 @@ recruitingRouter.patch('/:personId/stage', async (req, res, next) => {
     if (!stage) return res.status(400).json({ error: 'Stage required' });
 
     const episode = await prisma.employmentEpisode.findFirst({
-      where: { personId, tenantId, lifecycleStatus: 'CANDIDATE' },
+      where: { caregiverId: personId, tenantId, lifecycleStatus: 'CANDIDATE' },
     });
     if (!episode) return res.status(404).json({ error: 'Not found' });
 
     await prisma.employmentEpisode.update({
       where: { id: episode.id },
-      data: { recruitmentStage: stage },
+      data: { caregiverPipelineStage: stage },
     });
 
-    const person = await prisma.person.findUnique({
+    const caregiver = await prisma.caregiver.findUnique({
       where: { id: personId },
       include: { episodes: { orderBy: { episodeNumber: 'desc' }, take: 1 } },
     });
     res.json({
-      ...person,
+      ...caregiver,
       personRecruiting: { stage },
     });
   } catch (err) {
@@ -42,31 +42,31 @@ recruitingRouter.patch('/:personId/no-show', async (req, res, next) => {
     const { tenantId } = req.auth!;
     const { personId } = req.params;
 
-    const person = await prisma.person.findFirst({
+    const caregiver = await prisma.caregiver.findFirst({
       where: { id: personId, tenantId },
       include: { episodes: { where: { lifecycleStatus: 'CANDIDATE' }, orderBy: { episodeNumber: 'desc' }, take: 1 } },
     });
-    if (!person) return res.status(404).json({ error: 'Not found' });
+    if (!caregiver) return res.status(404).json({ error: 'Not found' });
 
-    const episode = person.episodes[0];
+    const episode = caregiver.episodes[0];
     if (!episode) return res.status(400).json({ error: 'No recruiting record' });
 
     const existingStrikes = await prisma.noShowEvent.count({
-      where: { personId, tenantId },
+      where: { caregiverId: personId, tenantId },
     });
     const newCount = existingStrikes + 1;
 
     await prisma.noShowEvent.create({
       data: {
         tenantId,
-        personId,
+        caregiverId: personId,
         occurredAt: new Date(),
         createdBy: req.auth!.sub,
       },
     });
 
     if (newCount >= 3) {
-      await prisma.person.update({
+      await prisma.caregiver.update({
         where: { id: personId },
         data: {
           eligibilityStatus: 'INELIGIBLE',
@@ -78,13 +78,13 @@ recruitingRouter.patch('/:personId/no-show', async (req, res, next) => {
       });
     }
 
-    const full = await prisma.person.findUnique({
+    const full = await prisma.caregiver.findUnique({
       where: { id: personId },
       include: { episodes: true },
     });
     res.json({
       ...full,
-      personRecruiting: { stage: full?.episodes[0]?.recruitmentStage || 'Intake', noShowStrikes: newCount },
+      personRecruiting: { stage: full?.episodes[0]?.caregiverPipelineStage || 'Interview', noShowStrikes: newCount },
     });
   } catch (err) {
     next(err);

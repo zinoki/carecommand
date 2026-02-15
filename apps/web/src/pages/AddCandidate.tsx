@@ -62,7 +62,7 @@ export function AddCandidate() {
         body: fd,
       });
       const json = await res.json();
-      if (!res.ok) throw new Error(json.error || 'Failed to add candidate');
+      if (!res.ok) throw new Error(json.error || 'Failed to add applicant');
       return json;
     },
     onSuccess: (data) => {
@@ -113,7 +113,7 @@ export function AddCandidate() {
       <Link to="/app/recruiting" className="text-sky-600 hover:underline mb-4 inline-block">
         ← Back to recruiting
       </Link>
-      <h1 className="text-2xl font-bold mb-6">Add candidate</h1>
+      <h1 className="text-2xl font-bold mb-6">Add applicant</h1>
       <form onSubmit={handleSubmit} className="max-w-xl space-y-4">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
@@ -278,7 +278,7 @@ export function AddCandidate() {
             disabled={createMutation.isPending}
             className="px-4 py-2 bg-sky-600 text-white rounded-lg hover:bg-sky-500 disabled:opacity-50"
           >
-            {createMutation.isPending ? 'Adding...' : 'Add candidate'}
+            {createMutation.isPending ? 'Adding...' : 'Add applicant'}
           </button>
         </div>
       </form>

@@ -69,7 +69,7 @@ importRouter.post('/caregivers', upload.single('file'), async (req, res, next) =
       const normalizedEmail = email ? email.toLowerCase().trim() : null;
 
       await prisma.$transaction(async (tx) => {
-        const p = await tx.person.create({
+        const p = await tx.caregiver.create({
           data: {
             tenantId,
             firstName,
@@ -85,7 +85,7 @@ importRouter.post('/caregivers', upload.single('file'), async (req, res, next) =
         await tx.employmentEpisode.create({
           data: {
             tenantId,
-            personId: p.id,
+            caregiverId: p.id,
             episodeNumber: 1,
             lifecycleStatus: 'ACTIVE',
             startDate: new Date(),

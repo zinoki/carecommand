@@ -12,7 +12,13 @@ router.get('/clients', async (req, res, next) => {
   try {
     const { tenantId } = req.auth!;
     const clients = await prisma.client.findMany({
-      where: { tenantId },
+      where: {
+        tenantId,
+        OR: [
+          { axisCareLifecycleStage: 'client' },
+          { axisCareId: null, clientPipelineStage: 'Matched' },
+        ],
+      },
       orderBy: { lastName: 'asc' },
     });
     res.json(clients);
@@ -27,6 +33,7 @@ router.get('/clients/:id', async (req, res, next) => {
     const { id } = req.params;
     const client = await prisma.client.findFirst({
       where: { id, tenantId },
+      include: { owner: true },
     });
     if (!client) return res.status(404).json({ error: 'Not found' });
     res.json(client);
@@ -38,9 +45,16 @@ router.get('/clients/:id', async (req, res, next) => {
 router.get('/leads', async (req, res, next) => {
   try {
     const { tenantId } = req.auth!;
-    const leads = await prisma.lead.findMany({
-      where: { tenantId },
+    const leads = await prisma.client.findMany({
+      where: {
+        tenantId,
+        OR: [
+          { axisCareLifecycleStage: 'lead' },
+          { axisCareId: null, clientPipelineStage: { not: null } },
+        ],
+      },
       orderBy: { lastName: 'asc' },
+      include: { owner: true },
     });
     res.json(leads);
   } catch (err) {
@@ -52,8 +66,9 @@ router.get('/leads/:id', async (req, res, next) => {
   try {
     const { tenantId } = req.auth!;
     const { id } = req.params;
-    const lead = await prisma.lead.findFirst({
+    const lead = await prisma.client.findFirst({
       where: { id, tenantId },
+      include: { owner: true },
     });
     if (!lead) return res.status(404).json({ error: 'Not found' });
     res.json(lead);
@@ -65,8 +80,8 @@ router.get('/leads/:id', async (req, res, next) => {
 router.get('/applicants', async (req, res, next) => {
   try {
     const { tenantId } = req.auth!;
-    const applicants = await prisma.applicant.findMany({
-      where: { tenantId },
+    const applicants = await prisma.caregiver.findMany({
+      where: { tenantId, axisCareLifecycleStage: 'applicant' },
       orderBy: { lastName: 'asc' },
     });
     res.json(applicants);
@@ -79,11 +94,11 @@ router.get('/applicants/:id', async (req, res, next) => {
   try {
     const { tenantId } = req.auth!;
     const { id } = req.params;
-    const applicant = await prisma.applicant.findFirst({
-      where: { id, tenantId },
+    const applicant = await prisma.caregiver.findFirst({
+      where: { id, tenantId, axisCareLifecycleStage: 'applicant' },
     });
     if (!applicant) return res.status(404).json({ error: 'Not found' });
-    res.json(applicant);
+    res.json({ ...applicant, rawData: applicant.axisCareRawData ?? {} });
   } catch (err) {
     next(err);
   }

@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../hooks/useAuth';
 
 const API_URL = import.meta.env.VITE_API_URL || '';
-const STAGES = ['Applied', 'Screening', 'Interviewing', 'Offered'];
+const STAGES = ['Interview', 'ManagerReview', 'Onboarding', 'Ready', 'OnHold', 'Offboarding', 'Offboarded'];
 
 export function Recruiting() {
   const { getHeaders } = useAuth();
@@ -22,9 +22,9 @@ export function Recruiting() {
 
   const byStage = STAGES.reduce((acc, s) => ({ ...acc, [s]: [] }), {} as Record<string, any[]>);
   candidates.forEach((c: any) => {
-    const stage = c.personRecruiting?.stage || 'Applied';
+    const stage = c.personRecruiting?.stage || 'Interview';
     if (byStage[stage]) byStage[stage].push(c);
-    else byStage['Applied'].push(c);
+    else byStage['Interview'].push(c);
   });
 
   return (
@@ -35,7 +35,7 @@ export function Recruiting() {
           to="/app/recruiting/new"
           className="px-4 py-2 bg-sky-600 text-white rounded-lg hover:bg-sky-500 font-medium"
         >
-          Add candidate
+          Add applicant
         </Link>
       </div>
       {isLoading ? (

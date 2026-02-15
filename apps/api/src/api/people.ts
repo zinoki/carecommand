@@ -9,12 +9,12 @@ peopleRouter.use(requireAuth);
 peopleRouter.get('/', async (req, res, next) => {
   try {
     const { tenantId } = req.auth!;
-    const persons = await prisma.person.findMany({
+    const caregivers = await prisma.caregiver.findMany({
       where: { tenantId },
       include: { episodes: { orderBy: { episodeNumber: 'desc' }, take: 1 } },
       orderBy: { updatedAt: 'desc' },
     });
-    res.json(persons);
+    res.json(caregivers);
   } catch (err) {
     next(err);
   }
@@ -24,15 +24,15 @@ peopleRouter.get('/:id', async (req, res, next) => {
   try {
     const { tenantId } = req.auth!;
     const { id } = req.params;
-    const person = await prisma.person.findFirst({
+    const caregiver = await prisma.caregiver.findFirst({
       where: { id, tenantId },
       include: {
         episodes: { orderBy: { episodeNumber: 'desc' }, include: { owner: true } },
         axisCareMapping: true,
       },
     });
-    if (!person) return res.status(404).json({ error: 'Not found' });
-    res.json(person);
+    if (!caregiver) return res.status(404).json({ error: 'Not found' });
+    res.json(caregiver);
   } catch (err) {
     next(err);
   }
@@ -45,8 +45,8 @@ peopleRouter.post('/', requireRole(['ADMIN', 'STAFF']), async (req, res, next) =
     const normalizedEmail = email ? email.toLowerCase().trim() : null;
     const normalizedPhone = phone ? phone.replace(/\D/g, '') : null;
 
-    const person = await prisma.$transaction(async (tx) => {
-      const p = await tx.person.create({
+    const caregiver = await prisma.$transaction(async (tx) => {
+      const p = await tx.caregiver.create({
         data: {
           tenantId,
           firstName: firstName || 'Unknown',
@@ -62,17 +62,17 @@ peopleRouter.post('/', requireRole(['ADMIN', 'STAFF']), async (req, res, next) =
       await tx.employmentEpisode.create({
         data: {
           tenantId,
-          personId: p.id,
+          caregiverId: p.id,
           episodeNumber: 1,
           lifecycleStatus: 'CANDIDATE',
-          recruitmentStage: 'Intake',
+          caregiverPipelineStage: 'Interview',
         },
       });
       return p;
     });
 
-    const full = await prisma.person.findUnique({
-      where: { id: person.id },
+    const full = await prisma.caregiver.findUnique({
+      where: { id: caregiver.id },
       include: { episodes: true },
     });
     res.status(201).json(full);
@@ -86,7 +86,7 @@ peopleRouter.patch('/:id', requireRole(['ADMIN', 'STAFF']), async (req, res, nex
     const { tenantId } = req.auth!;
     const { id } = req.params;
     const { firstName, lastName, email, phone, birthday, isDriver } = req.body;
-    const existing = await prisma.person.findFirst({ where: { id, tenantId } });
+    const existing = await prisma.caregiver.findFirst({ where: { id, tenantId } });
     if (!existing) return res.status(404).json({ error: 'Not found' });
 
     const data: any = {};
@@ -99,12 +99,12 @@ peopleRouter.patch('/:id', requireRole(['ADMIN', 'STAFF']), async (req, res, nex
     if (birthday !== undefined) data.birthday = birthday ? new Date(birthday) : null;
     if (isDriver !== undefined) data.isDriver = !!isDriver;
 
-    const person = await prisma.person.update({
+    const caregiver = await prisma.caregiver.update({
       where: { id },
       data,
       include: { episodes: true },
     });
-    res.json(person);
+    res.json(caregiver);
   } catch (err) {
     next(err);
   }
