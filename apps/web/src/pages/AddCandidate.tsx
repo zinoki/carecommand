@@ -97,10 +97,6 @@ export function AddCandidate() {
       setError('Please enter a valid email address');
       return;
     }
-    if (!resumeFile) {
-      setError('Resume is required');
-      return;
-    }
     if (form.phone.length > 50) {
       setError('Phone must be 50 characters or less');
       return;
@@ -213,13 +209,12 @@ export function AddCandidate() {
           />
         </div>
         <div>
-          <label className="block text-sm font-medium text-slate-700 mb-1">Resume *</label>
+          <label className="block text-sm font-medium text-slate-700 mb-1">Resume (optional)</label>
           <input
             type="file"
             accept=".pdf,.doc,.docx"
             onChange={(e) => setResumeFile(e.target.files?.[0] ?? null)}
             className="w-full px-3 py-2 border rounded-lg file:mr-2 file:py-1 file:px-3 file:rounded file:border-0 file:bg-sky-50 file:text-sky-700"
-            required
           />
         </div>
         <div className="border-t pt-4 mt-6">

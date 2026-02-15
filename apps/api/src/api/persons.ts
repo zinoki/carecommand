@@ -133,7 +133,6 @@ personsRouter.post('/', upload.single('resume'), async (req, res, next) => {
       if (!lastName) return res.status(400).json({ error: 'Last name is required' });
       if (!email) return res.status(400).json({ error: 'Email is required' });
       if (!phone) return res.status(400).json({ error: 'Phone is required' });
-      if (!file) return res.status(400).json({ error: 'Resume is required' });
     }
     const gender = body.gender?.trim() || null;
     const birthday = body.birthday ? new Date(body.birthday) : null;
