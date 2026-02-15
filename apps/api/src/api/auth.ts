@@ -12,10 +12,8 @@ const authLimiter = rateLimit({
   message: { error: 'Too many attempts' },
 });
 
-authRouter.use(authLimiter);
-
-authRouter.post('/signup', validateBody(signupSchema), authController.signup);
-authRouter.post('/login', validateBody(loginSchema), authController.login);
+authRouter.post('/signup', authLimiter, validateBody(signupSchema), authController.signup);
+authRouter.post('/login', authLimiter, validateBody(loginSchema), authController.login);
 authRouter.post('/logout', authController.logout);
 authRouter.get('/me', authController.me);
 
