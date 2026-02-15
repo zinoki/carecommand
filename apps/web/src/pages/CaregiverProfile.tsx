@@ -57,9 +57,7 @@ export function CaregiverProfile() {
           <h2 className="font-semibold mb-2">Requirements</h2>
           <p className="text-slate-500">No requirements yet</p>
         </div>
-        {Object.keys(rawData).length > 0 && (
-          <AxisCareDataDisplay data={rawData} title="Full AxisCare data" />
-        )}
+        <AxisCareDataDisplay data={rawData} title="Full AxisCare data" />
       </div>
     </div>
   );
