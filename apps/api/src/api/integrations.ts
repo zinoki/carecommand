@@ -3,6 +3,11 @@ import { requireAuth, requireRole } from '../middleware/auth.js';
 import { validateBody } from '../middleware/validate.js';
 import { axisCareConnectionSchema } from '@carecommand/shared';
 import { prisma } from '../lib/prisma.js';
+import { runAxisCareSync } from '../lib/axiscare-sync.js';
+import {
+  getAxisCareBaseUrl,
+  listCaregivers,
+} from '../lib/axiscare.js';
 import crypto from 'crypto';
 
 const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY || 'dev-key-32-bytes-long!!!!';
@@ -43,9 +48,6 @@ integrationsRouter.get('/axiscare', async (req, res, next) => {
     res.json({
       id: conn.id,
       siteNumber: conn.siteNumber,
-      enabled: conn.enabled,
-      syncMode: conn.syncMode,
-      syncFrequencyMinutes: conn.syncFrequencyMinutes,
       lastSyncAt: conn.lastSyncAt,
     });
   } catch (err) {
@@ -59,31 +61,33 @@ integrationsRouter.put(
   async (req, res, next) => {
     try {
       const { tenantId } = req.auth!;
-      const { siteNumber, apiToken, syncEnabled, syncFrequencyMinutes } = req.body;
+      const { siteNumber, apiToken } = req.body;
+
+      const existing = await prisma.axisCareConnection.findUnique({
+        where: { tenantId },
+      });
+      if (!existing && !apiToken) {
+        return res.status(400).json({ error: 'API token is required when creating connection' });
+      }
+
+      const updateData: { siteNumber: string; apiTokenEncrypted?: string } = { siteNumber };
+      if (apiToken && apiToken.trim()) {
+        updateData.apiTokenEncrypted = encrypt(apiToken);
+      }
 
       const conn = await prisma.axisCareConnection.upsert({
         where: { tenantId },
         create: {
           tenantId,
           siteNumber,
-          apiTokenEncrypted: encrypt(apiToken),
-          enabled: syncEnabled ?? false,
-          syncMode: 'READ_ONLY',
-          syncFrequencyMinutes: syncFrequencyMinutes ?? 60,
+          apiTokenEncrypted: encrypt(apiToken!),
         },
-        update: {
-          siteNumber,
-          apiTokenEncrypted: encrypt(apiToken),
-          enabled: syncEnabled ?? undefined,
-          syncFrequencyMinutes: syncFrequencyMinutes ?? undefined,
-        },
+        update: updateData,
       });
       res.json({
         id: conn.id,
         siteNumber: conn.siteNumber,
-        enabled: conn.enabled,
-        syncMode: conn.syncMode,
-        syncFrequencyMinutes: conn.syncFrequencyMinutes,
+        lastSyncAt: conn.lastSyncAt,
       });
     } catch (err) {
       next(err);
@@ -100,18 +104,47 @@ integrationsRouter.post('/axiscare/test', async (req, res, next) => {
     if (!conn) return res.status(400).json({ error: 'AxisCare not configured' });
 
     const token = decrypt(conn.apiTokenEncrypted);
-    const baseUrl = process.env.AXISCARE_BASE_URL || 'https://api.axiscare.com';
-    const res2 = await fetch(`${baseUrl}/v1/caregivers?limit=1`, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'X-Site-Number': conn.siteNumber,
-      },
-    });
-    if (!res2.ok) {
-      const err = await res2.text();
-      return res.status(400).json({ error: `AxisCare API error: ${err}` });
+    const baseUrl = getAxisCareBaseUrl(conn.siteNumber);
+    const data = await listCaregivers(baseUrl, token);
+    // Just verify we got a response (array)
+    if (!Array.isArray(data)) {
+      return res.status(400).json({ error: 'AxisCare API returned unexpected format' });
     }
     res.json({ success: true });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'AxisCare API error';
+    return res.status(400).json({ error: message });
+  }
+});
+
+integrationsRouter.post('/axiscare/sync', async (req, res, next) => {
+  try {
+    const { tenantId } = req.auth!;
+    const conn = await prisma.axisCareConnection.findUnique({
+      where: { tenantId },
+    });
+    if (!conn) return res.status(400).json({ error: 'AxisCare not configured' });
+
+    const token = decrypt(conn.apiTokenEncrypted);
+    const stats = await runAxisCareSync(
+      prisma,
+      tenantId,
+      conn.siteNumber,
+      token
+    );
+
+    await prisma.axisCareConnection.update({
+      where: { tenantId },
+      data: { lastSyncAt: new Date(), updatedAt: new Date() },
+    });
+
+    res.json({
+      success: true,
+      applicants: stats.applicants,
+      caregivers: stats.caregivers,
+      clients: stats.clients,
+      leads: stats.leads,
+    });
   } catch (err) {
     next(err);
   }

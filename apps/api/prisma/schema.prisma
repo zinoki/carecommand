@@ -30,6 +30,11 @@ model Tenant {
   personRequirements PersonRequirement[]
   requirementEvidence RequirementEvidence[]
   axisCareMappings   AxisCareMapping[]
+  clients            Client[]
+  leads              Lead[]
+  applicants         Applicant[]
+  schedules          Schedule[]
+  visits             Visit[]
 
   @@index([id])
 }
@@ -146,6 +151,8 @@ model Person {
   episodes         EmploymentEpisode[]
   noShowEvents     NoShowEvent[]
   axisCareMapping  AxisCareMapping?
+  schedules       Schedule[]
+  visits           Visit[]
 
   @@index([tenantId])
   @@index([tenantId, eligibilityStatus])
@@ -290,18 +297,15 @@ model RequirementEvidence {
 // ============ AxisCare ============
 
 model AxisCareConnection {
-  id                    String    @id @default(uuid())
-  tenantId              String    @unique
-  siteNumber            String
-  apiTokenEncrypted     String
-  enabled               Boolean   @default(false)
-  syncMode              String    @default("READ_ONLY") // READ_ONLY, DRY_RUN, SAFE_WRITE, FULL_WRITE
-  syncFrequencyMinutes  Int       @default(60)
-  lastSyncAt            DateTime?
-  createdAt             DateTime  @default(now())
-  updatedAt             DateTime  @updatedAt
+  id                String    @id @default(uuid())
+  tenantId          String    @unique
+  siteNumber        String
+  apiTokenEncrypted String
+  lastSyncAt        DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 
-  tenant   Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([tenantId])
 }
@@ -353,6 +357,119 @@ model AxisCareWriteLimiter {
 
   @@unique([tenantId, hourBucket])
   @@index([tenantId])
+}
+
+// ============ AxisCare Synced Entities ============
+
+model Applicant {
+  id                 String   @id @default(uuid())
+  tenantId           String
+  axiscareApplicantId String
+  firstName          String
+  lastName           String
+  email              String?
+  phone              String?
+  rawData            Json     @default("{}")
+  lastSyncedAt       DateTime @default(now())
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, axiscareApplicantId])
+  @@index([tenantId])
+}
+
+model Client {
+  id               String    @id @default(uuid())
+  tenantId         String
+  axiscareClientId String
+  firstName        String
+  lastName         String
+  email            String?
+  phone            String?
+  address          String?
+  status           String
+  rawData          Json      @default("{}")
+  lastSyncedAt     DateTime  @default(now())
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  tenant   Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  schedules Schedule[]
+  visits   Visit[]
+
+  @@unique([tenantId, axiscareClientId])
+  @@index([tenantId])
+  @@index([status])
+}
+
+model Lead {
+  id              String   @id @default(uuid())
+  tenantId        String
+  axiscareLeadId  String
+  firstName       String
+  lastName        String
+  email           String?
+  phone           String?
+  rawData         Json     @default("{}")
+  lastSyncedAt    DateTime @default(now())
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, axiscareLeadId])
+  @@index([tenantId])
+}
+
+model Schedule {
+  id                 String   @id @default(uuid())
+  tenantId           String
+  clientId           String?
+  personId           String?
+  axiscareScheduleId String?  @unique
+  startAt            DateTime
+  endAt              DateTime?
+  rawData            Json     @default("{}")
+  lastSyncedAt       DateTime @default(now())
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  client   Client?   @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  person   Person?   @relation(fields: [personId], references: [id], onDelete: SetNull)
+  visits   Visit[]
+
+  @@index([tenantId])
+  @@index([clientId])
+  @@index([personId])
+}
+
+model Visit {
+  id               String    @id @default(uuid())
+  tenantId         String
+  scheduleId       String?
+  clientId         String?
+  personId         String?
+  axiscareVisitId  String?   @unique
+  status           String?
+  startAt          DateTime?
+  endAt           DateTime?
+  rawData          Json      @default("{}")
+  lastSyncedAt     DateTime  @default(now())
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  schedule Schedule? @relation(fields: [scheduleId], references: [id], onDelete: SetNull)
+  client   Client?   @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  person   Person?   @relation(fields: [personId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId])
+  @@index([scheduleId])
+  @@index([clientId])
+  @@index([personId])
 }
 
 // ============ Messaging ============

@@ -115,8 +115,5 @@ export const createTaskSchema = z.object({
 
 export const axisCareConnectionSchema = z.object({
   siteNumber: z.string().min(1),
-  apiToken: z.string().min(1),
-  syncEnabled: z.boolean().optional(),
-  syncFrequencyMinutes: z.number().int().min(15).max(1440).optional(),
-  webhookEnabled: z.boolean().optional(),
+  apiToken: z.string().min(1).optional(), // Required on create, optional on update (keeps existing)
 });
