@@ -13,7 +13,8 @@
     "db:seed": "npm run db:seed --workspace=carecommand-api",
     "db:studio": "npm run db:studio --workspace=carecommand-api",
     "docker:up": "docker compose up -d",
-    "docker:down": "docker compose down"
+    "docker:down": "docker compose down",
+    "ngrok": "./scripts/ngrok.sh"
   },
   "devDependencies": {
     "concurrently": "^8.2.2"

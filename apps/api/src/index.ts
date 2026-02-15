@@ -9,7 +9,20 @@ import { requestLogger } from './middleware/requestLogger.js';
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-app.use(cors({ origin: process.env.CLIENT_URL || 'http://localhost:5173', credentials: true }));
+// Allow localhost and ngrok origins for sharing with teammates
+const isNgrokOrigin = (origin?: string) =>
+  origin && /^https:\/\/[a-z0-9-]+\.(ngrok-free\.app|ngrok\.io)$/.test(origin);
+app.use(
+  cors({
+    origin: (origin, cb) => {
+      const allowed = process.env.CLIENT_URL || 'http://localhost:5173';
+      if (!origin || origin === allowed || origin === 'http://localhost:5173' || isNgrokOrigin(origin))
+        cb(null, true);
+      else cb(null, false);
+    },
+    credentials: true,
+  })
+);
 app.use(express.json());
 app.use(cookieParser());
 app.use(sessionMiddleware);
