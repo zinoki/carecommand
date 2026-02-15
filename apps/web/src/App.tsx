@@ -8,6 +8,12 @@ import { AppLayout } from './components/AppLayout';
 import { Dashboard } from './pages/Dashboard';
 import { Caregivers } from './pages/Caregivers';
 import { CaregiverProfile } from './pages/CaregiverProfile';
+import { Clients } from './pages/Clients';
+import { ClientProfile } from './pages/ClientProfile';
+import { Leads } from './pages/Leads';
+import { LeadProfile } from './pages/LeadProfile';
+import { Applicants } from './pages/Applicants';
+import { ApplicantProfile } from './pages/ApplicantProfile';
 import { Recruiting } from './pages/Recruiting';
 import { AddCandidate } from './pages/AddCandidate';
 import { CandidateProfile } from './pages/CandidateProfile';
@@ -48,6 +54,12 @@ export default function App() {
         <Route path="onboarding/:id" element={<Onboarding />} />
         <Route path="caregivers" element={<Caregivers />} />
         <Route path="caregivers/:id" element={<CaregiverProfile />} />
+        <Route path="clients" element={<Clients />} />
+        <Route path="clients/:id" element={<ClientProfile />} />
+        <Route path="leads" element={<Leads />} />
+        <Route path="leads/:id" element={<LeadProfile />} />
+        <Route path="applicants" element={<Applicants />} />
+        <Route path="applicants/:id" element={<ApplicantProfile />} />
         <Route path="compliance" element={<Compliance />} />
         <Route path="tasks" element={<Tasks />} />
         <Route path="reports" element={<Reports />} />

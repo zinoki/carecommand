@@ -92,7 +92,10 @@ personsRouter.get('/:id', async (req, res, next) => {
     const { id } = req.params;
     const person = await prisma.person.findFirst({
       where: { id, tenantId },
-      include: { episodes: { orderBy: { episodeNumber: 'desc' } } },
+      include: {
+        episodes: { orderBy: { episodeNumber: 'desc' } },
+        axisCareMapping: true,
+      },
     });
     if (!person) return res.status(404).json({ error: 'Not found' });
     res.json({

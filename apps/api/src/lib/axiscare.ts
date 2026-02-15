@@ -31,24 +31,52 @@ async function fetchAxisCare(
   return res.json();
 }
 
-function toArray(data: unknown): unknown[] {
-  if (Array.isArray(data)) return data;
-  if (data && typeof data === 'object') {
-    const o = data as Record<string, unknown>;
-    if (Array.isArray(o.data)) return o.data;
-    if (Array.isArray(o.items)) return o.items;
-    if (Array.isArray(o.results)) return o.results;
+async function fetchAxisCareByUrl(url: string, apiToken: string): Promise<unknown> {
+  const res = await fetch(url, {
+    headers: getAxisCareHeaders(apiToken),
+  });
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`AxisCare API error (${res.status}): ${err}`);
   }
+  return res.json();
+}
+
+/** Extract array from results.{entity} object format. AxisCare returns { results: { caregivers: { "1": {...}, "2": {...} } } } */
+function extractFromResults(data: unknown, entityKey: string): unknown[] {
+  const o = data as Record<string, unknown>;
+  const results = o?.results as Record<string, unknown> | undefined;
+  const entity = results?.[entityKey];
+  if (entity && typeof entity === 'object' && !Array.isArray(entity)) {
+    return Object.values(entity);
+  }
+  if (Array.isArray(entity)) return entity;
   return [];
 }
 
-/** List applicants */
+/** Get nextPage URL from response for pagination */
+function getNextPage(data: unknown): string | null {
+  const o = data as Record<string, unknown>;
+  const results = o?.results as Record<string, unknown> | undefined;
+  const next = results?.nextPage;
+  return typeof next === 'string' && next ? next : null;
+}
+
+/** List all applicants with pagination */
 export async function listApplicants(
   baseUrl: string,
   apiToken: string
 ): Promise<unknown[]> {
-  const data = await fetchAxisCare(baseUrl, apiToken, '/applicants');
-  return toArray(data);
+  const all: unknown[] = [];
+  let data = await fetchAxisCare(baseUrl, apiToken, '/applicants');
+  all.push(...extractFromResults(data, 'applicants'));
+  let url = getNextPage(data);
+  while (url) {
+    data = await fetchAxisCareByUrl(url, apiToken);
+    all.push(...extractFromResults(data, 'applicants'));
+    url = getNextPage(data);
+  }
+  return all;
 }
 
 /** Get applicant by ID */
@@ -60,13 +88,21 @@ export async function getApplicant(
   return fetchAxisCare(baseUrl, apiToken, `/applicants/${applicantId}`);
 }
 
-/** List caregivers */
+/** List all caregivers with pagination. Uses results.caregivers object format. */
 export async function listCaregivers(
   baseUrl: string,
   apiToken: string
 ): Promise<unknown[]> {
-  const data = await fetchAxisCare(baseUrl, apiToken, '/caregivers');
-  return toArray(data);
+  const all: unknown[] = [];
+  let data = await fetchAxisCare(baseUrl, apiToken, '/caregivers');
+  all.push(...extractFromResults(data, 'caregivers'));
+  let url = getNextPage(data);
+  while (url) {
+    data = await fetchAxisCareByUrl(url, apiToken);
+    all.push(...extractFromResults(data, 'caregivers'));
+    url = getNextPage(data);
+  }
+  return all;
 }
 
 /** Get caregiver by ID */
@@ -78,13 +114,21 @@ export async function getCaregiver(
   return fetchAxisCare(baseUrl, apiToken, `/caregivers/${caregiverId}`);
 }
 
-/** List clients */
+/** List all clients with pagination */
 export async function listClients(
   baseUrl: string,
   apiToken: string
 ): Promise<unknown[]> {
-  const data = await fetchAxisCare(baseUrl, apiToken, '/clients');
-  return toArray(data);
+  const all: unknown[] = [];
+  let data = await fetchAxisCare(baseUrl, apiToken, '/clients');
+  all.push(...extractFromResults(data, 'clients'));
+  let url = getNextPage(data);
+  while (url) {
+    data = await fetchAxisCareByUrl(url, apiToken);
+    all.push(...extractFromResults(data, 'clients'));
+    url = getNextPage(data);
+  }
+  return all;
 }
 
 /** Get client by ID */
@@ -103,7 +147,7 @@ export async function listClientResponsibleParties(
   clientId: string
 ): Promise<unknown[]> {
   const data = await fetchAxisCare(baseUrl, apiToken, `/clients/${clientId}/responsibleParties`);
-  return toArray(data);
+  return extractFromResults(data, 'responsibleParties');
 }
 
 /** Get responsible party for a client */
@@ -120,13 +164,21 @@ export async function getClientResponsibleParty(
   );
 }
 
-/** List leads */
+/** List all leads with pagination */
 export async function listLeads(
   baseUrl: string,
   apiToken: string
 ): Promise<unknown[]> {
-  const data = await fetchAxisCare(baseUrl, apiToken, '/leads');
-  return toArray(data);
+  const all: unknown[] = [];
+  let data = await fetchAxisCare(baseUrl, apiToken, '/leads');
+  all.push(...extractFromResults(data, 'leads'));
+  let url = getNextPage(data);
+  while (url) {
+    data = await fetchAxisCareByUrl(url, apiToken);
+    all.push(...extractFromResults(data, 'leads'));
+    url = getNextPage(data);
+  }
+  return all;
 }
 
 /** Get lead by ID */
@@ -145,7 +197,7 @@ export async function listLeadResponsibleParties(
   leadId: string
 ): Promise<unknown[]> {
   const data = await fetchAxisCare(baseUrl, apiToken, `/leads/${leadId}/responsibleParties`);
-  return toArray(data);
+  return extractFromResults(data, 'responsibleParties');
 }
 
 /** Get responsible party for a lead */

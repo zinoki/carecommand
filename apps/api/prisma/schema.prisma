@@ -318,6 +318,7 @@ model AxisCareMapping {
   externalIdVerified    Boolean  @default(false)
   writeEnabled          Boolean  @default(false)
   matchConfidence       Int      @default(0)
+  rawData               Json     @default("{}")
   lastSyncedAt          DateTime
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt

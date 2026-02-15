@@ -5,14 +5,10 @@ import { PrismaClient } from '@prisma/client';
 import {
   getAxisCareBaseUrl,
   listApplicants,
-  getApplicant,
   listCaregivers,
-  getCaregiver,
   listClients,
-  getClient,
   listClientResponsibleParties,
   listLeads,
-  getLead,
   listLeadResponsibleParties,
 } from './axiscare.js';
 
@@ -30,6 +26,39 @@ function extractOptionalString(obj: unknown, key: string): string | null {
     return v != null ? String(v) : null;
   }
   return null;
+}
+
+/** AxisCare uses contactEmail; also check email/Email */
+function extractEmail(obj: unknown): string | null {
+  return (
+    extractOptionalString(obj, 'contactEmail') ??
+    extractOptionalString(obj, 'email') ??
+    extractOptionalString(obj, 'Email')
+  );
+}
+
+/** AxisCare uses mobilePhone, homePhone, otherPhone; also check phone/Phone */
+function extractPhone(obj: unknown): string | null {
+  return (
+    extractOptionalString(obj, 'mobilePhone') ??
+    extractOptionalString(obj, 'homePhone') ??
+    extractOptionalString(obj, 'otherPhone') ??
+    extractOptionalString(obj, 'phone') ??
+    extractOptionalString(obj, 'Phone')
+  );
+}
+
+/** Map AxisCare status.label to Care Command lifecycleStatus for Caregivers page tabs */
+function mapAxisCareStatusToLifecycle(obj: unknown): string {
+  const status = obj && typeof obj === 'object' && 'status' in obj
+    ? (obj as Record<string, unknown>).status
+    : null;
+  const label = status && typeof status === 'object' && status !== null && 'label' in status
+    ? String((status as Record<string, unknown>).label)
+    : '';
+  if (label === 'Active') return 'Active';
+  if (label === 'On Hold') return 'Ineligible';
+  return 'Other'; // Inactive, Eligible For Rehire, In-Eligible For Rehire, etc.
 }
 
 function extractId(obj: unknown): string {
@@ -50,14 +79,13 @@ export async function runAxisCareSync(
   const baseUrl = getAxisCareBaseUrl(siteNumber);
   const stats = { applicants: 0, caregivers: 0, clients: 0, leads: 0 };
 
-  // Sync Applicants
+  // Sync Applicants (list contains full data)
   const applicants = await listApplicants(baseUrl, apiToken);
   for (const item of applicants) {
     const id = extractId(item);
     if (!id) continue;
     try {
-      const full = await getApplicant(baseUrl, apiToken, id);
-      const rawData = full && typeof full === 'object' ? (full as object) : {};
+      const rawData = item && typeof item === 'object' ? (item as object) : {};
       await prisma.applicant.upsert({
         where: {
           tenantId_axiscareApplicantId: { tenantId, axiscareApplicantId: id },
@@ -65,17 +93,17 @@ export async function runAxisCareSync(
         create: {
           tenantId,
           axiscareApplicantId: id,
-          firstName: extractString(full, 'firstName') || extractString(full, 'FirstName') || 'Unknown',
-          lastName: extractString(full, 'lastName') || extractString(full, 'LastName') || 'Unknown',
-          email: extractOptionalString(full, 'email') ?? extractOptionalString(full, 'Email'),
-          phone: extractOptionalString(full, 'phone') ?? extractOptionalString(full, 'Phone'),
+          firstName: extractString(item, 'firstName') || extractString(item, 'FirstName') || 'Unknown',
+          lastName: extractString(item, 'lastName') || extractString(item, 'LastName') || 'Unknown',
+          email: extractEmail(item) ?? extractOptionalString(item, 'email') ?? extractOptionalString(item, 'Email'),
+          phone: extractPhone(item) ?? extractOptionalString(item, 'phone') ?? extractOptionalString(item, 'Phone'),
           rawData: rawData as object,
         },
         update: {
-          firstName: extractString(full, 'firstName') || extractString(full, 'FirstName') || 'Unknown',
-          lastName: extractString(full, 'lastName') || extractString(full, 'LastName') || 'Unknown',
-          email: extractOptionalString(full, 'email') ?? extractOptionalString(full, 'Email'),
-          phone: extractOptionalString(full, 'phone') ?? extractOptionalString(full, 'Phone'),
+          firstName: extractString(item, 'firstName') || extractString(item, 'FirstName') || 'Unknown',
+          lastName: extractString(item, 'lastName') || extractString(item, 'LastName') || 'Unknown',
+          email: extractEmail(item) ?? extractOptionalString(item, 'email') ?? extractOptionalString(item, 'Email'),
+          phone: extractPhone(item) ?? extractOptionalString(item, 'phone') ?? extractOptionalString(item, 'Phone'),
           rawData: rawData as object,
           lastSyncedAt: new Date(),
           updatedAt: new Date(),
@@ -87,18 +115,18 @@ export async function runAxisCareSync(
     }
   }
 
-  // Sync Caregivers -> Person + AxisCareMapping
+  // Sync Caregivers -> Person + AxisCareMapping (list contains full data, use contactEmail/mobilePhone)
   const caregivers = await listCaregivers(baseUrl, apiToken);
   for (const item of caregivers) {
     const id = extractId(item);
     if (!id) continue;
     try {
-      const full = await getCaregiver(baseUrl, apiToken, id);
-      const rawData = full && typeof full === 'object' ? (full as object) : {};
-      const firstName = extractString(full, 'firstName') || extractString(full, 'FirstName') || 'Unknown';
-      const lastName = extractString(full, 'lastName') || extractString(full, 'LastName') || 'Unknown';
-      const email = extractOptionalString(full, 'email') ?? extractOptionalString(full, 'Email');
-      const phone = extractOptionalString(full, 'phone') ?? extractOptionalString(full, 'Phone');
+      const rawData = item && typeof item === 'object' ? (item as object) : {};
+      const firstName = extractString(item, 'firstName') || extractString(item, 'FirstName') || 'Unknown';
+      const lastName = extractString(item, 'lastName') || extractString(item, 'LastName') || 'Unknown';
+      const email = extractEmail(item);
+      const phone = extractPhone(item);
+      const lifecycleStatus = mapAxisCareStatusToLifecycle(item);
 
       const existing = await prisma.axisCareMapping.findFirst({
         where: { tenantId, axiscareCaregiverId: id },
@@ -117,9 +145,13 @@ export async function runAxisCareSync(
             updatedAt: new Date(),
           },
         });
+        await prisma.employmentEpisode.updateMany({
+          where: { personId: existing.personId },
+          data: { lifecycleStatus, updatedAt: new Date() },
+        });
         await prisma.axisCareMapping.update({
           where: { id: existing.id },
-          data: { lastSyncedAt: new Date(), updatedAt: new Date() },
+          data: { rawData: rawData as object, lastSyncedAt: new Date(), updatedAt: new Date() },
         });
       } else {
         const person = await prisma.person.create({
@@ -138,7 +170,7 @@ export async function runAxisCareSync(
             tenantId,
             personId: person.id,
             episodeNumber: 1,
-            lifecycleStatus: 'ACTIVE',
+            lifecycleStatus,
           },
         });
         await prisma.axisCareMapping.create({
@@ -146,6 +178,7 @@ export async function runAxisCareSync(
             tenantId,
             personId: person.id,
             axiscareCaregiverId: id,
+            rawData: rawData as object,
             lastSyncedAt: new Date(),
           },
         });
@@ -156,16 +189,22 @@ export async function runAxisCareSync(
     }
   }
 
-  // Sync Clients (with responsible parties in rawData)
+  // Sync Clients (list may have full data; fetch responsible parties separately)
   const clients = await listClients(baseUrl, apiToken);
   for (const item of clients) {
     const id = extractId(item);
     if (!id) continue;
     try {
-      const full = await getClient(baseUrl, apiToken, id);
-      const rawData = full && typeof full === 'object' ? (full as object) : {};
+      const rawData = item && typeof item === 'object' ? (item as object) : {};
       const rpList = await listClientResponsibleParties(baseUrl, apiToken, id);
       const enriched = { ...rawData, responsibleParties: rpList };
+      const statusVal = extractString(item, 'status') || extractString(item, 'Status');
+      const statusLabel = item && typeof item === 'object' && 'status' in item
+        ? (item as Record<string, unknown>).status
+        : null;
+      const statusStr = statusLabel && typeof statusLabel === 'object' && statusLabel !== null && 'label' in statusLabel
+        ? String((statusLabel as Record<string, unknown>).label)
+        : statusVal || 'Active';
 
       await prisma.client.upsert({
         where: {
@@ -174,21 +213,21 @@ export async function runAxisCareSync(
         create: {
           tenantId,
           axiscareClientId: id,
-          firstName: extractString(full, 'firstName') || extractString(full, 'FirstName') || 'Unknown',
-          lastName: extractString(full, 'lastName') || extractString(full, 'LastName') || 'Unknown',
-          email: extractOptionalString(full, 'email') ?? extractOptionalString(full, 'Email'),
-          phone: extractOptionalString(full, 'phone') ?? extractOptionalString(full, 'Phone'),
-          address: extractOptionalString(full, 'address') ?? extractOptionalString(full, 'Address'),
-          status: extractString(full, 'status') || extractString(full, 'Status') || 'Active',
+          firstName: extractString(item, 'firstName') || extractString(item, 'FirstName') || 'Unknown',
+          lastName: extractString(item, 'lastName') || extractString(item, 'LastName') || 'Unknown',
+          email: extractEmail(item) ?? extractOptionalString(item, 'email') ?? extractOptionalString(item, 'Email'),
+          phone: extractPhone(item) ?? extractOptionalString(item, 'phone') ?? extractOptionalString(item, 'Phone'),
+          address: extractOptionalString(item, 'address') ?? extractOptionalString(item, 'Address'),
+          status: statusStr,
           rawData: enriched as object,
         },
         update: {
-          firstName: extractString(full, 'firstName') || extractString(full, 'FirstName') || 'Unknown',
-          lastName: extractString(full, 'lastName') || extractString(full, 'LastName') || 'Unknown',
-          email: extractOptionalString(full, 'email') ?? extractOptionalString(full, 'Email'),
-          phone: extractOptionalString(full, 'phone') ?? extractOptionalString(full, 'Phone'),
-          address: extractOptionalString(full, 'address') ?? extractOptionalString(full, 'Address'),
-          status: extractString(full, 'status') || extractString(full, 'Status') || 'Active',
+          firstName: extractString(item, 'firstName') || extractString(item, 'FirstName') || 'Unknown',
+          lastName: extractString(item, 'lastName') || extractString(item, 'LastName') || 'Unknown',
+          email: extractEmail(item) ?? extractOptionalString(item, 'email') ?? extractOptionalString(item, 'Email'),
+          phone: extractPhone(item) ?? extractOptionalString(item, 'phone') ?? extractOptionalString(item, 'Phone'),
+          address: extractOptionalString(item, 'address') ?? extractOptionalString(item, 'Address'),
+          status: statusStr,
           rawData: enriched as object,
           lastSyncedAt: new Date(),
           updatedAt: new Date(),
@@ -200,14 +239,13 @@ export async function runAxisCareSync(
     }
   }
 
-  // Sync Leads (with responsible parties in rawData)
+  // Sync Leads (list may have full data)
   const leads = await listLeads(baseUrl, apiToken);
   for (const item of leads) {
     const id = extractId(item);
     if (!id) continue;
     try {
-      const full = await getLead(baseUrl, apiToken, id);
-      const rawData = full && typeof full === 'object' ? (full as object) : {};
+      const rawData = item && typeof item === 'object' ? (item as object) : {};
       const rpList = await listLeadResponsibleParties(baseUrl, apiToken, id);
       const enriched = { ...rawData, responsibleParties: rpList };
 
@@ -218,17 +256,17 @@ export async function runAxisCareSync(
         create: {
           tenantId,
           axiscareLeadId: id,
-          firstName: extractString(full, 'firstName') || extractString(full, 'FirstName') || 'Unknown',
-          lastName: extractString(full, 'lastName') || extractString(full, 'LastName') || 'Unknown',
-          email: extractOptionalString(full, 'email') ?? extractOptionalString(full, 'Email'),
-          phone: extractOptionalString(full, 'phone') ?? extractOptionalString(full, 'Phone'),
+          firstName: extractString(item, 'firstName') || extractString(item, 'FirstName') || 'Unknown',
+          lastName: extractString(item, 'lastName') || extractString(item, 'LastName') || 'Unknown',
+          email: extractEmail(item) ?? extractOptionalString(item, 'email') ?? extractOptionalString(item, 'Email'),
+          phone: extractPhone(item) ?? extractOptionalString(item, 'phone') ?? extractOptionalString(item, 'Phone'),
           rawData: enriched as object,
         },
         update: {
-          firstName: extractString(full, 'firstName') || extractString(full, 'FirstName') || 'Unknown',
-          lastName: extractString(full, 'lastName') || extractString(full, 'LastName') || 'Unknown',
-          email: extractOptionalString(full, 'email') ?? extractOptionalString(full, 'Email'),
-          phone: extractOptionalString(full, 'phone') ?? extractOptionalString(full, 'Phone'),
+          firstName: extractString(item, 'firstName') || extractString(item, 'FirstName') || 'Unknown',
+          lastName: extractString(item, 'lastName') || extractString(item, 'LastName') || 'Unknown',
+          email: extractEmail(item) ?? extractOptionalString(item, 'email') ?? extractOptionalString(item, 'Email'),
+          phone: extractPhone(item) ?? extractOptionalString(item, 'phone') ?? extractOptionalString(item, 'Phone'),
           rawData: enriched as object,
           lastSyncedAt: new Date(),
           updatedAt: new Date(),

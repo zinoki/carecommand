@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE "AxisCareMapping" ADD COLUMN IF NOT EXISTS "rawData" JSONB NOT NULL DEFAULT '{}';

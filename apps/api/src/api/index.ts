@@ -15,6 +15,7 @@ import { recruitingRouter } from './recruiting.js';
 import { integrationsRouter } from './integrations.js';
 import { importRouter } from './import.js';
 import { billingRouter } from './billing.js';
+import { axiscareEntitiesRouter } from './axiscareEntities.js';
 
 export const apiRouter = Router();
 
@@ -32,5 +33,6 @@ apiRouter.use('/person-requirements', personRequirementsRouter);
 apiRouter.use('/documents', documentsRouter);
 apiRouter.use('/recruiting', recruitingRouter);
 apiRouter.use('/integrations', integrationsRouter);
+apiRouter.use('/axiscare-entities', axiscareEntitiesRouter);
 apiRouter.use('/import', importRouter);
 apiRouter.use('/billing', billingRouter);
